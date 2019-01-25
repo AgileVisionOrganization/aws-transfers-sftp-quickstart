@@ -1,0 +1,33 @@
+{
+  "name": "aws-sftp-with-custom-idp-example",
+  "version": "1.0.0",
+  "description": "",
+  "main": "webpack.config.js",
+  "dependencies": {
+    "amazon-cognito-identity-js": "^3.0.7",
+    "https": "^1.0.0",
+    "node-fetch": "^2.3.0",
+    "url": "^0.11.0"
+  },
+  "devDependencies": {
+    "babel-core": "^6.26.3",
+    "babel-loader": "^7.1.5",
+    "babel-preset-es2015": "^6.24.1",
+    "eslint": "^5.12.1",
+    "json-loader": "^0.5.7",
+    "serverless-webpack": "^5.2.0",
+    "webpack": "^4.29.0",
+    "webpack-node-externals": "^1.7.2",
+    "eslint-config-prettier": "^3.6.0",
+    "eslint-plugin-import": "^2.15.0",
+    "eslint-plugin-prettier": "^3.0.1",
+    "prettier": "^1.16.1",
+    "aws-sdk": "2.393.0"
+  },
+  "scripts": {
+    "build": "eslint --fix ./src/* && webpack",
+    "format": "eslint --fix ./src/*"
+  },
+  "author": "",
+  "license": "MIT"
+}

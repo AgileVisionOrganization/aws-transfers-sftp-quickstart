@@ -1,0 +1,209 @@
+service: sftp-server-cognito-integration
+
+provider:
+  name: aws
+  profile: agilevision
+  runtime: nodejs8.10
+  memorySize: 512
+  versionFunctions: false
+  region: us-east-1
+  deploymentBucket: sftp-server-cognito-integration
+  stage: dev
+
+custom:
+  apiVersion: "v1.0"
+  webpack:
+    webpackConfig: './webpack.config.js'
+    includeModules:
+      forceExclude:
+        - aws-sdk
+      forceInclude:
+        - https
+        - url
+        - node-fetch
+        - amazon-cognito-identity-js
+
+functions:
+  SftpAuthorizer:
+    handler: src/handler.authorize
+    role: LambdaExecutionRole
+    environment:
+      COGNITO_USER_POOL_ID: ${env:COGNITO_USER_POOL_ID}
+      COGNITO_CLIENT_ID: ${env:COGNITO_CLIENT_ID}
+      SERVER_ID: { "Fn::GetAtt": ["SftpServer", "ServerId" ] }
+      BUCKET_ARN: { "Fn::GetAtt": ["SftpBucket", "Arn" ] }
+      ROLE_ARN: { "Fn::GetAtt": ["SftpUserRole", "Arn" ] }
+    events:
+      - http:
+          path: /servers/{serverId}/users/{user}/config
+          method: GET
+          authorizer: aws_iam
+  CustomSftpServerManager:
+    handler: src/handler.manageSftpServer
+    role: LambdaSftpManageRole
+    timeout: 180
+          
+resources:
+  Resources:           
+    LambdaExecutionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /sftp/
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+              Action: "sts:AssumeRole"
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    LambdaSftpManageRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /sftp/
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+              Action: "sts:AssumeRole"
+        Policies:
+          - PolicyName: LambdaSftpManageRole
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - transfer:CreateServer
+                    - transfer:UpdateServer
+                    - transfer:DeleteServer
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                    - iam:PassRole
+                    - apigateway:GET
+                  Resource: "*"
+    TransferIdentityProviderRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /sftp/
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: 
+                  - transfer.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: TransferCanInvokeAuthorizeApi
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - execute-api:Invoke
+                  Resource:
+                    Fn::Join:
+                      - ":"
+                      - 
+                        - "arn"
+                        - Ref: 'AWS::Partition'
+                        - execute-api
+                        - Ref: 'AWS::Region'
+                        - Ref: 'AWS::AccountId'
+                        - Fn::Join:
+                            - ""
+                            -
+                              - Ref: ApiGatewayRestApi
+                              - /${self:provider.stage}/GET/*
+          - PolicyName: TransferCanReadAuthorizeApi
+            PolicyDocument: 
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - apigateway:GET
+                  Resource: "*"
+    TransferLoggingRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /sftp/
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: 
+                  - transfer.amazonaws.com
+              Action: sts:AssumeRole
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSTransferLoggingAccess
+    SftpUserRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /sftp/
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - transfer.amazonaws.com
+              Action: "sts:AssumeRole"
+        Policies:
+          - PolicyName: SftpBucketAccessPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - s3:*
+                  Resource:
+                    Fn::Join:
+                      - ":"
+                      - 
+                        - "arn"
+                        - Ref: 'AWS::Partition'
+                        - "s3::"
+                        - ${env:TRANSFER_BUCKET_NAME}*
+    SftpBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${env:TRANSFER_BUCKET_NAME}
+    SftpServer:
+      Type: "Custom::SFTPServer"
+      Version: "1.0"
+      DependsOn:
+        - CustomSftpServerManagerLambdaFunction
+        - TransferIdentityProviderRole
+        - TransferLoggingRole
+        - ApiGatewayRestApi
+        - SftpBucket
+      Properties:
+        ServiceToken: 
+          Fn::GetAtt: [ "CustomSftpServerManagerLambdaFunction", "Arn" ]
+        InvocationRole:
+          Fn::GetAtt: [ "TransferIdentityProviderRole", "Arn" ]
+        LoggingRole: 
+           Fn::GetAtt: [ "TransferLoggingRole", "Arn" ]
+        AuthorizeUrl:
+          Fn::Join:
+            - ""
+            - 
+              - https://
+              - Ref: ApiGatewayRestApi
+              - .execute-api.
+              - Ref: 'AWS::Region'
+              - .amazonaws.com/dev/
+  Outputs:
+    ServerId:
+      Value:
+        Ref: SftpServer
+
+plugins:
+  - serverless-webpack
