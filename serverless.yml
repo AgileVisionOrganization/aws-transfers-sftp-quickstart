@@ -2,12 +2,10 @@ service: sftp-server-cognito-integration
 
 provider:
   name: aws
-  profile: agilevision
   runtime: nodejs8.10
   memorySize: 512
   versionFunctions: false
   region: us-east-1
-  deploymentBucket: sftp-server-cognito-integration
   stage: dev
 
 custom:
