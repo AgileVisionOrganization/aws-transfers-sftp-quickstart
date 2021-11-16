@@ -22,7 +22,7 @@
     "eslint-plugin-import": "^2.15.0",
     "eslint-plugin-prettier": "^3.0.1",
     "prettier": "^1.16.1",
-    "aws-sdk": "2.393.0"
+    "aws-sdk": "2.814.0"
   },
   "scripts": {
     "build": "eslint --fix ./src/* && webpack",
